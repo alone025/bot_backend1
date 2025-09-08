@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Conference Live Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+      :root {
+        --primary: #3498db;
+        --secondary: #2ecc71;
+        --accent: #e74c3c;
+        --dark: #2c3e50;
+        --light: #ecf0f1;
+        --gray: #95a5a6;
+        --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        --transition: all 0.3s ease;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      body {
+        background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+        color: var(--light);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: rgba(44, 62, 80, 0.9);
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+      }
+
+      header {
+        background: rgba(0, 0, 0, 0.2);
+        padding: 20px;
+        text-align: center;
+        border-bottom: 2px solid var(--primary);
+      }
+
+      h1 {
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+        color: white;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      }
+
+      .conference-selector {
+        margin: 20px 0;
+      }
+
+      select {
+        background: var(--dark);
+        color: white;
+        border: 2px solid var(--primary);
+        padding: 12px 20px;
+        border-radius: 50px;
+        font-size: 1.1rem;
+        width: 100%;
+        max-width: 400px;
+        outline: none;
+        cursor: pointer;
+        transition: var(--transition);
+      }
+
+      select:hover {
+        background: var(--primary);
+      }
+
+      .stats-container {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 15px;
+        margin: 20px 0;
+      }
+
+      .stat-box {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 10px;
+        padding: 15px;
+        min-width: 150px;
+        text-align: center;
+        box-shadow: var(--shadow);
+        transition: var(--transition);
+      }
+
+      .stat-box:hover {
+        transform: translateY(-5px);
+        background: rgba(0, 0, 0, 0.4);
+      }
+
+      .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: var(--secondary);
+        margin-bottom: 5px;
+      }
+
+      .stat-label {
+        font-size: 0.9rem;
+        color: var(--light);
+      }
+
+      .content-tabs {
+        display: flex;
+        background: rgba(0, 0, 0, 0.2);
+        border-bottom: 2px solid var(--primary);
+      }
+
+      .tab {
+        padding: 15px 30px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: var(--transition);
+        flex: 1;
+        text-align: center;
+      }
+
+      .tab.active {
+        background: var(--primary);
+      }
+
+      .tab:hover:not(.active) {
+        background: rgba(52, 152, 219, 0.3);
+      }
+
+      .content-container {
+        display: flex;
+        min-height: 400px;
+      }
+
+      .content-section {
+        flex: 1;
+        padding: 20px;
+        display: none;
+        overflow-y: auto;
+        max-height: 500px;
+      }
+
+      .content-section.active {
+        display: block;
+        animation: fadeIn 0.5s ease;
+      }
+
+      .section-title {
+        font-size: 1.5rem;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid var(--secondary);
+        color: white;
+      }
+
+      .poll-card,
+      .question-card {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: var(--shadow);
+        transition: var(--transition);
+        border-left: 4px solid var(--primary);
+      }
+
+      .poll-card:hover,
+      .question-card:hover {
+        transform: translateX(5px);
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .poll-question {
+        font-size: 1.2rem;
+        margin-bottom: 15px;
+        color: white;
+      }
+
+      .poll-options {
+        margin-top: 15px;
+      }
+
+      .poll-option {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        padding: 10px;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 5px;
+      }
+
+      .option-votes {
+        font-weight: bold;
+        color: var(--secondary);
+      }
+
+      .question-text {
+        font-size: 1.1rem;
+        margin-bottom: 10px;
+        color: white;
+      }
+
+      .question-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.9rem;
+        color: var(--gray);
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: var(--gray);
+        font-style: italic;
+      }
+
+      .notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--secondary);
+        color: white;
+        padding: 15px 25px;
+        border-radius: 5px;
+        box-shadow: var(--shadow);
+        transform: translateX(100%);
+        transition: transform 0.5s ease;
+        z-index: 1000;
+      }
+
+      .notification.show {
+        transform: translateX(0);
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      @keyframes slideIn {
+        from {
+          transform: translateY(20px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      /* Responsive adjustments */
+      @media (max-width: 768px) {
+        .content-container {
+          flex-direction: column;
+        }
+
+        .stats-container {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .stat-box {
+          width: 100%;
+          max-width: 250px;
+        }
+
+        .question-meta {
+          flex-direction: column;
+        }
+
+        .question-meta span {
+          margin-bottom: 5px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Панель управления конференцией в реальном времени</h1>
+        <div class="conference-selector">
+          <select id="conferenceSelect">
+            <option value="00">Выделить</option>
+          </select>
+        </div>
+      </header>
+
+      <div class="stats-container">
+        <div class="stat-box">
+          <div class="stat-value" id="participantsCount">0</div>
+          <div class="stat-label">Участники</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="connectionsCount">0</div>
+          <div class="stat-label">Связи</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="pollsCount">0</div>
+          <div class="stat-label">Активные опросы</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="questionsCount">0</div>
+          <div class="stat-label">Вопросы</div>
+        </div>
+      </div>
+
+      <div class="content-tabs">
+        <div class="tab active" data-target="pollsContainer">Опросы</div>
+        <div class="tab" data-target="questionsContainer">Вопросы</div>
+      </div>
+
+      <div class="content-container">
+        <div class="content-section active" id="pollsContainer">
+          <h2 class="section-title">Активные опросы</h2>
+          <!-- Polls will be loaded here -->
+        </div>
+
+        <div class="content-section" id="questionsContainer">
+          <h2 class="section-title">Недавние вопросы</h2>
+          <!-- Questions will be loaded here -->
+        </div>
+      </div>
+    </div>
+
+    <div class="notification" id="notification">Получен новый вопрос!</div>
+
+    <script>
+      class SecondScreen {
+        constructor() {
+          this.conference = "tech2024";
+          this.socket = null;
+          this.currentTab = "pollsContainer";
+          this.init();
+        }
+
+        init() {
+          this.connectSocket();
+          this.loadConferences();
+          this.loadInitialData();
+          this.setupEventListeners();
+        }
+
+        async loadConferences() {
+          try {
+            const conferences = await this.fetchData("/api/second-screen/conferences/public");
+            const conferenceSelect =
+              document.getElementById("conferenceSelect");
+
+            // Clear existing options except the first one
+            while (conferenceSelect.options.length > 1) {
+              conferenceSelect.remove(1);
+            }
+
+            // Add conferences from the server
+            conferences.forEach((conference) => {
+              const option = document.createElement("option");
+              option.value = conference.name;
+              option.textContent = conference.name;
+              conferenceSelect.appendChild(option);
+            });
+
+            // If the current conference is in the list, select it
+            if (conferences.some((c) => c.name === this.conference)) {
+              conferenceSelect.value = this.conference;
+            }
+          } catch (error) {
+            console.error("Error loading conferences:", error);
+            this.showNotification("Не удалось загрузить конференции");
+          }
+        }
+
+        connectSocket() {
+          // Connect to server - use your server URL
+          this.socket = io("http://localhost:3001");
+
+          this.socket.on("conferenceListUpdate", (conferences) => {
+            this.updateConferenceList(conferences);
+          });
+
+          this.socket.on("connect", () => {
+            console.log("Connected to server");
+            this.socket.emit("join-conference", this.conference);
+            this.showNotification("Подключено к серверу");
+          });
+
+          this.socket.on("pollUpdate", (poll) => {
+            this.updatePoll(poll);
+            this.showNotification("Опрос обновлен:: " + poll.question);
+          });
+
+          this.socket.on("newQuestion", (question) => {
+            this.addQuestion(question);
+            this.showNotification("Получен новый вопрос");
+          });
+
+          this.socket.on("statsUpdate", (stats) => {
+            this.updateStats(stats);
+          });
+        }
+
+        setupEventListeners() {
+          const conferenceSelect = document.getElementById("conferenceSelect");
+          if (conferenceSelect) {
+            conferenceSelect.addEventListener("change", (e) => {
+              this.conference = e.target.value;
+              this.socket.emit("join-conference", this.conference);
+              this.loadInitialData();
+              this.showNotification(
+                `Переключился на ${e.target.selectedOptions[0].text}`
+              );
+            });
+          }
+
+          // Tab switching
+          const tabs = document.querySelectorAll(".tab");
+          tabs.forEach((tab) => {
+            tab.addEventListener("click", () => {
+              const target = tab.getAttribute("data-target");
+              this.switchTab(target);
+            });
+          });
+
+          // Auto-refresh every 30 seconds
+          setInterval(() => {
+            this.loadInitialData();
+          }, 30000);
+        }
+
+        switchTab(target) {
+          // Update active tab visual
+          document.querySelectorAll(".tab").forEach((tab) => {
+            tab.classList.remove("active");
+          });
+          document
+            .querySelector(`[data-target="${target}"]`)
+            .classList.add("active");
+
+          // Update content sections
+          document.querySelectorAll(".content-section").forEach((section) => {
+            section.classList.remove("active");
+          });
+          document.getElementById(target).classList.add("active");
+
+          this.currentTab = target;
+        }
+
+        async loadInitialData() {
+          try {
+            const [polls, questions, stats] = await Promise.all([
+              this.fetchData(
+                `/api/second-screen/conference/${this.conference}/polls`
+              ),
+              this.fetchData(
+                `/api/second-screen/conference/${this.conference}/questions`
+              ),
+              this.fetchData(
+                `/api/second-screen/conference/${this.conference}/stats`
+              ),
+            ]);
+
+            this.updatePolls(polls);
+            this.updateQuestions(questions);
+            this.updateStats(stats);
+          } catch (error) {
+            console.error("Error loading initial data:", error);
+          }
+        }
+
+        async fetchData(endpoint) {
+          const response = await fetch(endpoint);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          return await response.json();
+        }
+
+        updateStats(stats) {
+          document.getElementById("participantsCount").textContent =
+            stats.participants || 0;
+          document.getElementById("connectionsCount").textContent =
+            stats.connections || 0;
+          document.getElementById("pollsCount").textContent =
+            stats.activePolls || 0;
+          document.getElementById("questionsCount").textContent =
+            stats.unansweredQuestions || 0;
+        }
+
+        updatePolls(polls) {
+          const container = document.getElementById("pollsContainer");
+
+          if (!polls || polls.length === 0) {
+            container.innerHTML =
+              '<div class="empty-state">На данный момент активных опросов нет.</div>';
+            return;
+          }
+
+          container.innerHTML =
+            '<h2 class="section-title">Активные опросы</h2>' +
+            polls
+              .map(
+                (poll) => `
+                    <div class="poll-card" data-poll-id="${poll._id}">
+                        <div class="poll-question">${this.escapeHtml(
+                          poll.question
+                        )}</div>
+                        <div class="poll-options">
+                            ${poll.options
+                              .map(
+                                (option, index) => `
+                                <div class="poll-option">
+                                    <span class="option-text">${
+                                      index + 1
+                                    }. ${this.escapeHtml(option.text)}</span>
+                                    <span class="option-votes">${
+                                      option.votes || 0
+                                    }</span>
+                                </div>
+                            `
+                              )
+                              .join("")}
+                        </div>
+                    </div>
+                `
+              )
+              .join("");
+        }
+
+        updatePoll(poll) {
+          const pollElement = document.querySelector(
+            `[data-poll-id="${poll._id}"]`
+          );
+
+          if (pollElement) {
+            pollElement
+              .querySelectorAll(".poll-option")
+              .forEach((optionEl, index) => {
+                const votesEl = optionEl.querySelector(".option-votes");
+                if (votesEl && poll.options[index]) {
+                  votesEl.textContent = poll.options[index].votes || 0;
+                }
+              });
+          } else {
+            // If poll doesn't exist, refresh the whole list
+            this.loadInitialData();
+          }
+        }
+
+        updateQuestions(questions) {
+          const container = document.getElementById("questionsContainer");
+
+          if (!questions || questions.length === 0) {
+            container.innerHTML =
+              '<div class="empty-state">Пока нет вопросов. Задайте их первым!</div>';
+            return;
+          }
+
+          container.innerHTML =
+            '<h2 class="section-title">Недавние вопросы</h2>' +
+            questions
+              .map(
+                (question) => `
+                    <div class="question-card">
+                        <div class="question-text">${this.escapeHtml(
+                          question.question
+                        )}</div>
+                        <div class="question-meta">
+                            <span>For: ${this.escapeHtml(
+                              question.speaker
+                            )}</span>
+                            <span>From: ${this.escapeHtml(
+                              question.askedByName || "Анонимный"
+                            )}</span>
+                            <span>${new Date(
+                              question.createdAt
+                            ).toLocaleTimeString()}</span>
+                        </div>
+                    </div>
+                `
+              )
+              .join("");
+        }
+
+        addQuestion(question) {
+          const container = document.getElementById("questionsContainer");
+
+          // Remove empty state if it exists
+          if (container.querySelector(".empty-state")) {
+            container.innerHTML =
+              '<h2 class="section-title">Недавние вопросы</h2>';
+          }
+
+          const questionHtml = `
+                    <div class="question-card" style="animation: slideIn 0.5s ease-in-out;">
+                        <div class="question-text">${this.escapeHtml(
+                          question.question
+                        )}</div>
+                        <div class="question-meta">
+                            <span>Для: ${this.escapeHtml(
+                              question.speaker
+                            )}</span>
+                            <span>От: ${this.escapeHtml(
+                              question.askedBy
+                            )}</span>
+                            <span>${new Date().toLocaleTimeString()}</span>
+                        </div>
+                    </div>
+                `;
+
+          container.insertAdjacentHTML("afterbegin", questionHtml);
+
+          // Update questions count
+          const questionsCount = container.children.length - 1; // Subtract 1 for the title
+          document.getElementById("questionsCount").textContent =
+            questionsCount;
+        }
+
+        showNotification(message) {
+          const notification = document.getElementById("notification");
+          notification.textContent = message;
+          notification.classList.add("show");
+
+          setTimeout(() => {
+            notification.classList.remove("show");
+          }, 3000);
+        }
+
+        escapeHtml(text) {
+          if (!text) return "";
+          const div = document.createElement("div");
+          div.textContent = text;
+          return div.innerHTML;
+        }
+
+        updateConferenceList(conferences) {
+          const conferenceSelect = document.getElementById("conferenceSelect");
+          const currentValue = conferenceSelect.value;
+
+          // Clear existing options except the first one
+          while (conferenceSelect.options.length > 1) {
+            conferenceSelect.remove(1);
+          }
+
+          // Add conferences from the server
+          conferences.forEach((conference) => {
+            const option = document.createElement("option");
+            option.value = conference.name;
+            option.textContent = conference.name;
+            conferenceSelect.appendChild(option);
+          });
+
+          // Restore the selected value if it still exists
+          if (conferences.some((c) => c.name === currentValue)) {
+            conferenceSelect.value = currentValue;
+          }
+        }
+      }
+
+      // Initialize when page loads
+      document.addEventListener("DOMContentLoaded", () => {
+        new SecondScreen();
+      });
+    </script>
+  </body>
+</html>
