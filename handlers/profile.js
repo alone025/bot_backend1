@@ -40,6 +40,34 @@ const profileHandler = (bot) => {
 Для начала давайте настроим ваш профиль!`;
 
     await ctx.reply(welcomeMessage);
+    
+    // Check if user already has a profile
+    const existingProfile = await UserProfile.findOne({ telegramId: ctx.from.id });
+    if (existingProfile && existingProfile.conference) {
+      await ctx.reply(`✅ Вы уже зарегистрированы и присоединились к ${existingProfile.conference}`);
+      await showMainMenu(ctx);  
+      return;
+    }
+    // Create user profile if not exists
+    if (!existingProfile) {
+      await UserProfile.create({
+      telegramId: ctx.from.id,
+      firstName: ctx.from.first_name,
+      lastName: ctx.from.last_name,
+      username: ctx.from.username,
+      isActive: true,
+      conference: null,
+      isAdmin: false,
+      interests: [],
+      offerings: [],
+      lookingFor: [],
+      contacts: { phone: "", email: "", telegram: "", linkedin: "" },
+      photo: "",
+    })
+    }
+
+
+    // Show conference selection
     await ctx.reply(
       "Пожалуйста, выберите одну из этих публичных конференций:",
       await conferenceKeyboard()
@@ -128,7 +156,7 @@ const profileHandler = (bot) => {
     const matches = await findMatches(ctx.from.id, userProfile.conference);
 
     if (matches.length === 0) {
-      await ctx.reply("No matching users found yet. Check back later!");
+      await ctx.reply("Подходящих пользователей пока не найдено. Зайдите позже!");
       return;
     }
 
@@ -876,23 +904,73 @@ const profileHandler = (bot) => {
   });
 };
 
+// // ============ HELPER FUNCTIONS ============
+// async function handleProfileInput(ctx, waitingFor, text) {
+//   try {
+//     let updateData = {};
+
+//     if (waitingFor === "contacts") {
+ 
+
+//       const contacts = {};
+//   text.split("\n").forEach((line) => {
+//     const idx = line.indexOf(":");
+//     if (idx !== -1) {
+//       const key = line.substring(0, idx).trim().toLowerCase();
+//       const value = line.substring(idx + 1).trim();
+//       if (key && value) contacts[key] = value;
+//     }
+//   });
+
+//     } else {
+//       updateData[waitingFor] = text
+//         .split(",")
+//         .map((s) => s.trim())
+//         .filter((s) => s);
+//     }
+
+//     await UserProfile.findOneAndUpdate(
+//       { telegramId: ctx.from.id },
+//       updateData,
+//       { upsert: true }
+//     );
+
+//     await ctx.reply("✅ Updated!");
+//     ctx.session.waitingFor = null;
+//     await showMainMenu(ctx);
+//   } catch (error) {
+//     console.error("Profile error:", error);
+//     await ctx.reply("❌ Ошибка обновления профиля");
+//   }
+// }
+
 // ============ HELPER FUNCTIONS ============
 async function handleProfileInput(ctx, waitingFor, text) {
   try {
     let updateData = {};
 
     if (waitingFor === "contacts") {
- 
-
       const contacts = {};
-  text.split("\n").forEach((line) => {
-    const idx = line.indexOf(":");
-    if (idx !== -1) {
-      const key = line.substring(0, idx).trim().toLowerCase();
-      const value = line.substring(idx + 1).trim();
-      if (key && value) contacts[key] = value;
-    }
-  });
+      text.split("\n").forEach((line) => {
+        const idx = line.indexOf(":");
+        if (idx !== -1) {
+          let key = line.substring(0, idx).trim().toLowerCase();
+          const value = line.substring(idx + 1).trim();
+
+          if (key && value) {
+            // Map Russian/labels to DB schema
+            if (key.startsWith("телефон")) key = "phone";
+            if (key.startsWith("email")) key = "email";
+            if (key.startsWith("telegram")) key = "telegram";
+            if (key.startsWith("linkedin")) key = "linkedin";
+
+            contacts[key] = value;
+          }
+        }
+      });
+
+      // assign to updateData
+      updateData.contacts = contacts;
 
     } else {
       updateData[waitingFor] = text
@@ -903,11 +981,11 @@ async function handleProfileInput(ctx, waitingFor, text) {
 
     await UserProfile.findOneAndUpdate(
       { telegramId: ctx.from.id },
-      updateData,
-      { upsert: true }
+      { $set: updateData },   // ✅ ensures it updates the right fields
+      { upsert: true, new: true }
     );
 
-    await ctx.reply("✅ Updated!");
+    await ctx.reply("✅ Обновлено!");
     ctx.session.waitingFor = null;
     await showMainMenu(ctx);
   } catch (error) {
@@ -915,6 +993,9 @@ async function handleProfileInput(ctx, waitingFor, text) {
     await ctx.reply("❌ Ошибка обновления профиля");
   }
 }
+
+
+
 
 async function handleQuestionInput(ctx, text) {
   try {
@@ -1173,6 +1254,7 @@ async function showProfile(ctx, profile) {
       }
     }
 
+      console.log("Profile contacts:", profile.contacts);
     if (profile.contacts && Object.keys(profile.contacts).length > 0) {
       let contactsMsg = `*Контакты:*\n`;
 
