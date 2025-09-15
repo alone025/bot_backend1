@@ -115,7 +115,7 @@ const profileHandler = (bot) => {
   bot.action("leave_conference", async (ctx) => {
   try {
     // remove user from conference in DB
-    await db.profiles.update(
+    await UserProfile.findOneAndUpdate(
       { telegramId: ctx.from.id },
       { $unset: { conference: null } }
     );
