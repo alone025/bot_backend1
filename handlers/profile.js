@@ -40,32 +40,45 @@ const profileHandler = (bot) => {
 Для начала давайте настроим ваш профиль!`;
 
     await ctx.reply(welcomeMessage);
-    
+
     // Check if user already has a profile
-    const existingProfile = await UserProfile.findOne({ telegramId: ctx.from.id });
+    const existingProfile = await UserProfile.findOne({
+      telegramId: ctx.from.id,
+    });
     if (existingProfile && existingProfile.conference) {
-      await ctx.reply(`✅ Вы уже зарегистрированы и присоединились к ${existingProfile.conference}`);
-      await showMainMenu(ctx);  
+      // await ctx.reply(`✅ Вы уже зарегистрированы и присоединились к ${existingProfile.conference}`);
+      await ctx.reply(
+        `✅ Вы уже зарегистрированы и присоединились к ${existingProfile.conference}`,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              "🚪 Выйти из конференции",
+              "leave_conference"
+            ),
+          ],
+        ])
+      );
+
+      await showMainMenu(ctx);
       return;
     }
     // Create user profile if not exists
     if (!existingProfile) {
       await UserProfile.create({
-      telegramId: ctx.from.id,
-      firstName: ctx.from.first_name,
-      lastName: ctx.from.last_name,
-      username: ctx.from.username,
-      isActive: true,
-      conference: null,
-      isAdmin: false,
-      interests: [],
-      offerings: [],
-      lookingFor: [],
-      contacts: { phone: "", email: "", telegram: "", linkedin: "" },
-      photo: "",
-    })
+        telegramId: ctx.from.id,
+        firstName: ctx.from.first_name,
+        lastName: ctx.from.last_name,
+        username: ctx.from.username,
+        isActive: true,
+        conference: null,
+        isAdmin: false,
+        interests: [],
+        offerings: [],
+        lookingFor: [],
+        contacts: { phone: "", email: "", telegram: "", vkontakte: "" },
+        photo: "",
+      });
     }
-
 
     // Show conference selection
     await ctx.reply(
@@ -99,11 +112,30 @@ const profileHandler = (bot) => {
     await showMainMenu(ctx);
   });
 
+  bot.action("leave_conference", async (ctx) => {
+  try {
+    // remove user from conference in DB
+    await db.profiles.update(
+      { telegramId: ctx.from.id },
+      { $unset: { conference: null } }
+    );
+
+    await ctx.editMessageText("🚪 Вы покинули конференцию. Выберите одну из этих публичных конференций.");
+    await conferenceKeyboard(ctx);
+  } catch (err) {
+    console.error(err);
+    await ctx.reply("❌ Ошибка при выходе из конференции.");
+  }
+});
+
+
   // ============ PROFILE MANAGEMENT ============
   bot.hears("👤 Мой профиль", async (ctx) => {
     const profile = await UserProfile.findOne({ telegramId: ctx.from.id });
     if (!profile) {
-      await ctx.reply("Please set up your profile first. Use /start to begin.");
+      await ctx.reply(
+        "Сначала настройте свой профиль. Используйте /start, чтобы начать."
+      );
       return;
     }
     await showProfile(ctx, profile);
@@ -115,11 +147,7 @@ const profileHandler = (bot) => {
       waitingFor: "photo",
       message: "Пожалуйста, пришлите свою фотографию:",
     },
-    "📞 Изменить контакты": {
-      waitingFor: "contacts",
-      message:
-        "Формат отправки контактов:\nТелефон: ...\nEmail: ...\nTelegram: ...\nLinkedIn: ...",
-    },
+    
     "🎯 Изменить интересы": {
       waitingFor: "interests",
       message: "Перечислите интересы (через запятую):",
@@ -144,19 +172,61 @@ const profileHandler = (bot) => {
     }
   );
 
+  // Edit contacts ========
+  bot.hears('📞 Изменить контакты', async (ctx)=> {
+
+
+    
+        
+await ctx.reply(
+    "Выберите контакт для изменения:",
+    Markup.inlineKeyboard([
+      [Markup.button.callback("📱 Телефон", "edit_phone")],
+      [Markup.button.callback("✉️ Email", "edit_email")],
+      [Markup.button.callback("💬 Telegram", "edit_telegram")],
+      [Markup.button.callback("🔗 Vkontakte", "edit_vkontakt")],
+    ])
+  );
+
+
+  })
+
+  bot.action("edit_phone", async (ctx) => {
+  ctx.session.waitingFor = "phone";
+  await ctx.reply("Введите новый номер телефона:");
+});
+
+bot.action("edit_email", async (ctx) => {
+  ctx.session.waitingFor = "email";
+  await ctx.reply("Введите новый Email:");
+});
+
+bot.action("edit_telegram", async (ctx) => {
+  ctx.session.waitingFor = "telegram";
+  await ctx.reply("Введите новый Telegram:");
+});
+
+bot.action("edit_vkontakt", async (ctx) => {
+  ctx.session.waitingFor = "vkontakt";
+  await ctx.reply("Введите новый Vkontakte:");
+});
+
+
   // ============ NETWORKING ============
   bot.hears("🔍 Найти людей", async (ctx) => {
     const userProfile = await UserProfile.findOne({ telegramId: ctx.from.id });
 
     if (!userProfile) {
-      await ctx.reply("Please set up your profile first using /start");
+      await ctx.reply("Сначала настройте свой профиль с помощью /start");
       return;
     }
 
     const matches = await findMatches(ctx.from.id, userProfile.conference);
 
     if (matches.length === 0) {
-      await ctx.reply("Подходящих пользователей пока не найдено. Зайдите позже!");
+      await ctx.reply(
+        "Подходящих пользователей пока не найдено. Зайдите позже!"
+      );
       return;
     }
 
@@ -284,7 +354,10 @@ const profileHandler = (bot) => {
 
       let message = `💬 Чат с ${otherUser.firstName}\n`;
       if (connection.lastMessage) {
-        message += `Последний: ${connection.lastMessage.text.substring(0, 30)}...\n`;
+        message += `Последний: ${connection.lastMessage.text.substring(
+          0,
+          30
+        )}...\n`;
       }
       if (connection.unreadCount > 0) {
         message += `📨 ${connection.unreadCount} непрочитанных`;
@@ -547,7 +620,7 @@ const profileHandler = (bot) => {
 
     // Profile editing
     else if (
-      ["contacts", "interests", "offerings", "lookingFor"].includes(waitingFor)
+      ["interests", "offerings", "lookingFor"].includes(waitingFor)
     ) {
       await handleProfileInput(ctx, waitingFor, text);
     }
@@ -572,16 +645,31 @@ const profileHandler = (bot) => {
       const newOption = ctx.message.text;
       ctx.session.newPoll.options.push({ text: newOption });
 
-      await ctx.reply("✅ Вариант добавлен.\nХотите добавить еще один вариант?", {
-        ...Markup.inlineKeyboard(
-          ctx.session.newPoll.options.length < 5
-            ? [
-                [Markup.button.callback("➕ Да", "add_more_option")],
-                [Markup.button.callback("✅ Заканчивать", "finish_poll_creation")],
-              ]
-            : [[Markup.button.callback("✅ Заканчивать", "finish_poll_creation")]]
-        ),
-      });
+      await ctx.reply(
+        "✅ Вариант добавлен.\nХотите добавить еще один вариант?",
+        {
+          ...Markup.inlineKeyboard(
+            ctx.session.newPoll.options.length < 5
+              ? [
+                  [Markup.button.callback("➕ Да", "add_more_option")],
+                  [
+                    Markup.button.callback(
+                      "✅ Заканчивать",
+                      "finish_poll_creation"
+                    ),
+                  ],
+                ]
+              : [
+                  [
+                    Markup.button.callback(
+                      "✅ Заканчивать",
+                      "finish_poll_creation"
+                    ),
+                  ],
+                ]
+          ),
+        }
+      );
     }
 
     // Chat
@@ -664,10 +752,8 @@ const profileHandler = (bot) => {
     }
 
     // answering questions
-   
-
     else if (waitingFor.match(/^adminQuest_answer_(\w+)$/)) {
-        const match = waitingFor.match(/^adminQuest_answer_(\w+)$/);
+      const match = waitingFor.match(/^adminQuest_answer_(\w+)$/);
 
       const questionId = match[1];
       const answerText = ctx.message.text;
@@ -736,8 +822,7 @@ const profileHandler = (bot) => {
     const questionId = ctx.match[1];
     const user = await UserProfile.findOne({ telegramId: ctx.from.id });
     if (!user || !user.isAdmin) return;
-    await Question
-      .findByIdAndDelete(questionId)
+    await Question.findByIdAndDelete(questionId)
       .then(async () => {
         await ctx.answerCbQuery("Вопрос удален ✅");
         await ctx.editMessageText("❌ Этот вопрос был удален..");
@@ -784,8 +869,18 @@ const profileHandler = (bot) => {
     await ctx.reply(
       "⚙️ Что вы хотите редактировать??",
       Markup.inlineKeyboard([
-        [Markup.button.callback("✏️ Редактировать вопрос", `edit_question_${pollId}`)],
-        [Markup.button.callback("📝 Параметры редактирования", `edit_options_${pollId}`)],
+        [
+          Markup.button.callback(
+            "✏️ Редактировать вопрос",
+            `edit_question_${pollId}`
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "📝 Параметры редактирования",
+            `edit_options_${pollId}`
+          ),
+        ],
         [Markup.button.callback("➕ Добавить вариант", `add_option_${pollId}`)],
       ])
     );
@@ -842,7 +937,9 @@ const profileHandler = (bot) => {
     const { question, options } = ctx.session.newPoll || {};
 
     if (!question || !options || options.length < 2) {
-      return ctx.reply("❌ Опрос должен содержать вопрос и как минимум 2 варианта ответа..");
+      return ctx.reply(
+        "❌ Опрос должен содержать вопрос и как минимум 2 варианта ответа.."
+      );
     }
 
     // Call your handleAdminPoll function, but pass options instead of default Yes/No
@@ -910,7 +1007,6 @@ const profileHandler = (bot) => {
 //     let updateData = {};
 
 //     if (waitingFor === "contacts") {
- 
 
 //       const contacts = {};
 //   text.split("\n").forEach((line) => {
@@ -949,29 +1045,8 @@ async function handleProfileInput(ctx, waitingFor, text) {
   try {
     let updateData = {};
 
-    if (waitingFor === "contacts") {
-      const contacts = {};
-      text.split("\n").forEach((line) => {
-        const idx = line.indexOf(":");
-        if (idx !== -1) {
-          let key = line.substring(0, idx).trim().toLowerCase();
-          const value = line.substring(idx + 1).trim();
-
-          if (key && value) {
-            // Map Russian/labels to DB schema
-            if (key.startsWith("телефон")) key = "phone";
-            if (key.startsWith("email")) key = "email";
-            if (key.startsWith("telegram")) key = "telegram";
-            if (key.startsWith("linkedin")) key = "linkedin";
-
-            contacts[key] = value;
-          }
-        }
-      });
-
-      // assign to updateData
-      updateData.contacts = contacts;
-
+    if (waitingFor === "phone" || waitingFor === "email" ||  waitingFor === "telegram"  ||  waitingFor === "vkontakt" ) {
+     updateData[`contacts.${waitingFor}`] = text.trim();
     } else {
       updateData[waitingFor] = text
         .split(",")
@@ -981,7 +1056,7 @@ async function handleProfileInput(ctx, waitingFor, text) {
 
     await UserProfile.findOneAndUpdate(
       { telegramId: ctx.from.id },
-      { $set: updateData },   // ✅ ensures it updates the right fields
+      { $set: updateData }, // ✅ ensures it updates the right fields
       { upsert: true, new: true }
     );
 
@@ -993,9 +1068,6 @@ async function handleProfileInput(ctx, waitingFor, text) {
     await ctx.reply("❌ Ошибка обновления профиля");
   }
 }
-
-
-
 
 async function handleQuestionInput(ctx, text) {
   try {
@@ -1011,7 +1083,10 @@ async function handleQuestionInput(ctx, text) {
     await question.save();
     await ctx.reply("✅ Вопрос отправлен!");
 
-    const admins = await UserProfile.find({ conference: userProfile.conference, isAdmin: true });
+    const admins = await UserProfile.find({
+      conference: userProfile.conference,
+      isAdmin: true,
+    });
 
     for (const admin of admins) {
       try {
@@ -1023,11 +1098,17 @@ async function handleQuestionInput(ctx, text) {
             reply_markup: {
               inline_keyboard: [
                 [
-                  { text: "💬 Отвечать", callback_data: `admin_answer_${question._id}` },
-                  { text: "❌ Удалить", callback_data: `admin_deleteQeustion_${question._id}` }
-                ]
-              ]
-            }
+                  {
+                    text: "💬 Отвечать",
+                    callback_data: `admin_answer_${question._id}`,
+                  },
+                  {
+                    text: "❌ Удалить",
+                    callback_data: `admin_deleteQeustion_${question._id}`,
+                  },
+                ],
+              ],
+            },
           }
         );
       } catch (err) {
@@ -1229,71 +1310,71 @@ async function showMainMenu(ctx) {
 }
 
 async function showProfile(ctx, profile) {
-    let message = `👤 *Ваш профиль*\n\n`;
-    message += `*Имя:* ${escapeMarkdown(profile.firstName)} ${escapeMarkdown(
-      profile.lastName || ""
-    )}\n`;
-    message += `*Ник:* @${escapeMarkdown(profile.username || "N/A")}\n`;
-    message += `*Конференция:* ${escapeMarkdown(
-      profile.conference || "Not set"
-    )}\n\n`;
-    message += `*Тип:* ${profile.isAdmin ? "Администратор" : "Участник"}\n\n`;
+  let message = `👤 *Ваш профиль*\n\n`;
+  message += `*Имя:* ${escapeMarkdown(profile.firstName)} ${escapeMarkdown(
+    profile.lastName || ""
+  )}\n`;
+  message += `*Ник:* @${escapeMarkdown(profile.username || "N/A")}\n`;
+  message += `*Конференция:* ${escapeMarkdown(
+    profile.conference || "Not set"
+  )}\n\n`;
+  message += `*Тип:* ${profile.isAdmin ? "Администратор" : "Участник"}\n\n`;
 
-    await ctx.reply(message, { parse_mode: "Markdown" });
+  await ctx.reply(message, { parse_mode: "Markdown" });
 
-    if (profile.photo) {
-      try {
-        if (profile.photo.startsWith("AgAC")) {
-          await ctx.replyWithPhoto(profile.photo, { caption: "Ваше фото" });
-        } else {
-          await ctx.reply(`📸 Фото профиля: ${profile.photo}`);
-        }
-      } catch (error) {
-        await ctx.reply("📸 Фото недоступно");
-        console.error("Error sending photo:", error);
+  if (profile.photo) {
+    try {
+      if (profile.photo.startsWith("AgAC")) {
+        await ctx.replyWithPhoto(profile.photo, { caption: "Ваше фото" });
+      } else {
+        await ctx.reply(`📸 Фото профиля: ${profile.photo}`);
       }
+    } catch (error) {
+      await ctx.reply("📸 Фото недоступно");
+      console.error("Error sending photo:", error);
+    }
+  }
+
+  console.log("Profile contacts:", profile.contacts);
+  if (profile.contacts && Object.keys(profile.contacts).length > 0) {
+    let contactsMsg = `*Контакты:*\n`;
+
+    if (profile.contacts.phone) {
+      contactsMsg += `• Телефон: ${escapeMarkdown(profile.contacts.phone)}\n`;
+    }
+    if (profile.contacts.email) {
+      contactsMsg += `• Email: ${escapeMarkdown(profile.contacts.email)}\n`;
+    }
+    if (profile.contacts.telegram) {
+      contactsMsg += `• Telegram: ${escapeMarkdown(
+        profile.contacts.telegram
+      )}\n`;
+    }
+    if (profile.contacts.linkedin) {
+      contactsMsg += `• LinkedIn: ${escapeMarkdown(
+        profile.contacts.linkedin
+      )}\n`;
     }
 
-      console.log("Profile contacts:", profile.contacts);
-    if (profile.contacts && Object.keys(profile.contacts).length > 0) {
-      let contactsMsg = `*Контакты:*\n`;
+    await ctx.reply(contactsMsg, { parse_mode: "Markdown" });
+  }
 
-      if (profile.contacts.phone) {
-        contactsMsg += `• Телефон: ${escapeMarkdown(profile.contacts.phone)}\n`;
-      }
-      if (profile.contacts.email) {
-        contactsMsg += `• Email: ${escapeMarkdown(profile.contacts.email)}\n`;
-      }
-      if (profile.contacts.telegram) {
-        contactsMsg += `• Telegram: ${escapeMarkdown(
-          profile.contacts.telegram
-        )}\n`;
-      }
-      if (profile.contacts.linkedin) {
-        contactsMsg += `• LinkedIn: ${escapeMarkdown(
-          profile.contacts.linkedin
-        )}\n`;
-      }
+  const sections = [
+    { title: "Интересы", value: profile.interests },
+    { title: "Я могу предложить", value: profile.offerings },
+    { title: "Находясь в поиске", value: profile.lookingFor },
+  ];
 
-      await ctx.reply(contactsMsg, { parse_mode: "Markdown" });
+  for (const section of sections) {
+    if (section.value && section.value.length > 0) {
+      const safeValues = section.value.map((v) => escapeMarkdown(v));
+      await ctx.reply(`*${section.title}:* ${safeValues.join(", ")}`, {
+        parse_mode: "Markdown",
+      });
     }
+  }
 
-    const sections = [
-      { title: "Интересы", value: profile.interests },
-      { title: "Я могу предложить", value: profile.offerings },
-      { title: "Находясь в поиске", value: profile.lookingFor },
-    ];
-
-    for (const section of sections) {
-      if (section.value && section.value.length > 0) {
-        const safeValues = section.value.map((v) => escapeMarkdown(v));
-        await ctx.reply(`*${section.title}:* ${safeValues.join(", ")}`, {
-          parse_mode: "Markdown",
-        });
-      }
-    }
-
-    await ctx.reply("Что бы вы хотели отредактировать??", profileKeyboard());
+  await ctx.reply("Что бы вы хотели отредактировать??", profileKeyboard());
 }
 
 async function showUserProfile(ctx, user) {
@@ -1347,7 +1428,9 @@ async function showPollResults(ctx, poll) {
   poll.options.forEach((opt, i) => {
     const percent =
       total > 0 ? (((opt.votes || 0) / total) * 100).toFixed(1) : 0;
-    message += `${i + 1}. ${opt.text}: ${opt.votes || 0} голоса (${percent}%)\n`;
+    message += `${i + 1}. ${opt.text}: ${
+      opt.votes || 0
+    } голоса (${percent}%)\n`;
   });
   message += `\nВсего: ${total} голоса`;
   await ctx.reply(message);

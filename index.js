@@ -66,7 +66,7 @@ profileHandler(bot);
 // Error handling
 bot.catch((err, ctx) => {
   console.error(`Error for ${ctx.updateType}:`, err);
-  ctx.reply('❌ An error occurred. Please try again.');
+  ctx.reply('❌ Произошла ошибка. Попробуйте ещё раз.');
 });
 
 // Broadcast poll updates to second screen
