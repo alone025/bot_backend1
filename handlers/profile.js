@@ -272,14 +272,14 @@ const profileHandler = (bot) => {
       telegramId: { $ne: ctx.from.id },
       conference: userProfile?.conference,
       isActive: true,
-    }).limit(3);
+    }).limit(10);
 
     if (featuredUsers.length === 0) {
-      await ctx.reply("No featured profiles yet.");
+      await ctx.reply("Пока нет избранных профилей.");
       return;
     }
 
-    await ctx.reply("⭐ Featured Profiles:");
+    await ctx.reply("⭐ Избранные профили:");
     for (const user of featuredUsers) {
       await showUserProfile(ctx, user);
     }
