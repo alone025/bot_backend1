@@ -231,7 +231,7 @@ const profileHandler = (bot) => {
       return scoreB - scoreA;
     });
 
-    await ctx.reply(`Found ${matches.length} potential matches:`);
+    await ctx.reply(`Найдено ${matches.length} потенциальных совпадений:`);
 
     for (const match of matches.slice(0, 10)) {
       // Show top 5 matches
@@ -247,11 +247,11 @@ const profileHandler = (bot) => {
     });
 
     if (connections.length === 0) {
-      await ctx.reply("No connections yet.");
+      await ctx.reply("Пока нет подключений.");
       return;
     }
 
-    await ctx.reply(`Your connections (${connections.length}):`);
+    await ctx.reply(`Ваши связи (${connections.length}):`);
     for (const connection of connections) {
       const otherUserId =
         connection.user1 === ctx.from.id ? connection.user2 : connection.user1;
@@ -971,6 +971,41 @@ const profileHandler = (bot) => {
     await ctx.reply("✏️ Пришлите мне новое название для этой конференции:");
   });
 
+  bot.action(/connectU_(.+)/, async (ctx) => {
+  const requesterId = ctx.match[1]; // extracted from callback data
+  const accepterId = ctx.from.id;
+
+  // ✅ Save connection in DB here
+  await Connection.findOneAndUpdate({$or : [{
+    user1: accepterId, user2: requesterId
+  }, {
+    user1: requesterId, user2: accepterId
+  }]}, { $set: { status: "accepted" } },    { upsert: true, new: true }
+);
+
+  await ctx.editMessageText("✅ Вы приняли запрос на подключение!")
+  await ctx.telegram.sendMessage(requesterId, `🎉 Ваш запрос принят пользователем ${ctx.from.first_name}!`);
+});
+
+bot.action(/rejectU_(.+)/, async (ctx) => {
+  
+    const requesterId = ctx.match[1];
+  const accepterId = ctx.from.id;
+
+  // update DB → rejected
+  await Connection.findOneAndUpdate(
+  {$or : [{
+    user1: accepterId, user2: requesterId
+  }, {
+    user1: requesterId, user2: accepterId
+  }]},
+    { $set: { status: "rejected" } },
+    { upsert: true, new: true }
+  );
+  await ctx.editMessageText("❌ Запрос отклонён.");
+  await ctx.telegram.sendMessage(requesterId, `😢 Ваш запрос отклонён пользователем ${ctx.from.first_name}.`);
+});
+
   // ============ PHOTO HANDLER ============
   bot.on("photo", async (ctx) => {
     if (!ctx.session || ctx.session.waitingFor !== "photo") return;
@@ -1206,8 +1241,8 @@ async function handleConnection(ctx, targetUserId) {
       targetUserId,
       `🤝 ${requester.firstName} хочет подключиться!`,
       Markup.inlineKeyboard([
-        Markup.button.callback("✅ Принимать", `connect_${ctx.from.id}`),
-        Markup.button.callback("❌ Отклонять", `reject_${ctx.from.id}`),
+        Markup.button.callback("✅ Принимать", `connectU_${ctx.from.id}`),
+        Markup.button.callback("❌ Отклонять", `rejectU_${ctx.from.id}`),
       ])
     );
 
