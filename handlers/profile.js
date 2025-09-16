@@ -113,21 +113,22 @@ const profileHandler = (bot) => {
   });
 
   bot.action("leave_conference", async (ctx) => {
-  try {
-    // remove user from conference in DB
-    await UserProfile.findOneAndUpdate(
-      { telegramId: ctx.from.id },
-      { $unset: { conference: null } }
-    );
+    try {
+      // remove user from conference in DB
+      await UserProfile.findOneAndUpdate(
+        { telegramId: ctx.from.id },
+        { $set: { conference: "" } }
+      );
 
-    await ctx.editMessageText("🚪 Вы покинули конференцию. Выберите одну из этих публичных конференций.");
-    await conferenceKeyboard(ctx);
-  } catch (err) {
-    console.error(err);
-    await ctx.reply("❌ Ошибка при выходе из конференции.");
-  }
-});
-
+      await ctx.editMessageText(
+        "🚪 Вы покинули конференцию. Выберите одну из этих публичных конференций.",
+        await conferenceKeyboard(ctx)
+      );
+    } catch (err) {
+      console.error(err);
+      await ctx.reply("❌ Ошибка при выходе из конференции.");
+    }
+  });
 
   // ============ PROFILE MANAGEMENT ============
   bot.hears("👤 Мой профиль", async (ctx) => {
@@ -147,7 +148,7 @@ const profileHandler = (bot) => {
       waitingFor: "photo",
       message: "Пожалуйста, пришлите свою фотографию:",
     },
-    
+
     "🎯 Изменить интересы": {
       waitingFor: "interests",
       message: "Перечислите интересы (через запятую):",
@@ -173,44 +174,37 @@ const profileHandler = (bot) => {
   );
 
   // Edit contacts ========
-  bot.hears('📞 Изменить контакты', async (ctx)=> {
-
-
-    
-        
-await ctx.reply(
-    "Выберите контакт для изменения:",
-    Markup.inlineKeyboard([
-      [Markup.button.callback("📱 Телефон", "edit_phone")],
-      [Markup.button.callback("✉️ Email", "edit_email")],
-      [Markup.button.callback("💬 Telegram", "edit_telegram")],
-      [Markup.button.callback("🔗 Vkontakte", "edit_vkontakt")],
-    ])
-  );
-
-
-  })
+  bot.hears("📞 Изменить контакты", async (ctx) => {
+    await ctx.reply(
+      "Выберите контакт для изменения:",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("📱 Телефон", "edit_phone")],
+        [Markup.button.callback("✉️ Email", "edit_email")],
+        [Markup.button.callback("💬 Telegram", "edit_telegram")],
+        [Markup.button.callback("🔗 Vkontakte", "edit_vkontakt")],
+      ])
+    );
+  });
 
   bot.action("edit_phone", async (ctx) => {
-  ctx.session.waitingFor = "phone";
-  await ctx.reply("Введите новый номер телефона:");
-});
+    ctx.session.waitingFor = "phone";
+    await ctx.reply("Введите новый номер телефона:");
+  });
 
-bot.action("edit_email", async (ctx) => {
-  ctx.session.waitingFor = "email";
-  await ctx.reply("Введите новый Email:");
-});
+  bot.action("edit_email", async (ctx) => {
+    ctx.session.waitingFor = "email";
+    await ctx.reply("Введите новый Email:");
+  });
 
-bot.action("edit_telegram", async (ctx) => {
-  ctx.session.waitingFor = "telegram";
-  await ctx.reply("Введите новый Telegram:");
-});
+  bot.action("edit_telegram", async (ctx) => {
+    ctx.session.waitingFor = "telegram";
+    await ctx.reply("Введите новый Telegram:");
+  });
 
-bot.action("edit_vkontakt", async (ctx) => {
-  ctx.session.waitingFor = "vkontakt";
-  await ctx.reply("Введите новый Vkontakte:");
-});
-
+  bot.action("edit_vkontakt", async (ctx) => {
+    ctx.session.waitingFor = "vkontakte";
+    await ctx.reply("Введите новый Vkontakte:");
+  });
 
   // ============ NETWORKING ============
   bot.hears("🔍 Найти людей", async (ctx) => {
@@ -619,9 +613,7 @@ bot.action("edit_vkontakt", async (ctx) => {
     }
 
     // Profile editing
-    else if (
-      ["interests", "offerings", "lookingFor"].includes(waitingFor)
-    ) {
+    else if (["interests", "offerings", "lookingFor","phone", "email", "telegram", "vkontakte"].includes(waitingFor)) {
       await handleProfileInput(ctx, waitingFor, text);
     }
     // Questions
@@ -1045,8 +1037,9 @@ async function handleProfileInput(ctx, waitingFor, text) {
   try {
     let updateData = {};
 
-    if (waitingFor === "phone" || waitingFor === "email" ||  waitingFor === "telegram"  ||  waitingFor === "vkontakt" ) {
-     updateData[`contacts.${waitingFor}`] = text.trim();
+    if (
+      ["phone", "email", "telegram", "vkontakte"].includes(waitingFor)) {
+      updateData[`contacts.${waitingFor}`] = text.trim();
     } else {
       updateData[waitingFor] = text
         .split(",")
@@ -1350,9 +1343,9 @@ async function showProfile(ctx, profile) {
         profile.contacts.telegram
       )}\n`;
     }
-    if (profile.contacts.linkedin) {
-      contactsMsg += `• LinkedIn: ${escapeMarkdown(
-        profile.contacts.linkedin
+    if (profile.contacts.vkontakte) {
+      contactsMsg += `• Bкonтaктe: ${escapeMarkdown(
+        profile.contacts.vkontakte
       )}\n`;
     }
 
