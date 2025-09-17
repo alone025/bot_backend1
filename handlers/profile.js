@@ -6,6 +6,7 @@ const {
   Conference,
   AccessCode,
   Message,
+  Category,
 } = require("../database");
 const {
   profileKeyboard,
@@ -149,10 +150,7 @@ const profileHandler = (bot) => {
       message: "Пожалуйста, пришлите свою фотографию:",
     },
 
-    "🎯 Изменить интересы": {
-      waitingFor: "interests",
-      message: "Перечислите интересы (через запятую):",
-    },
+    
     "💼 Изменить предложения": {
       waitingFor: "offerings",
       message: "Что вы можете предложить? (через запятую):",
@@ -172,6 +170,26 @@ const profileHandler = (bot) => {
       });
     }
   );
+
+  // =============== EDIT interest =================
+bot.hears("🎯 Изменить интересы", async (ctx) => {
+  const user = await UserProfile.findOne({ telegramId: ctx.from.id });
+  if (!user) return ctx.reply("Сначала настройте свой профиль через /start");
+
+  const categories = await Category.find().sort({ name: 1 });
+  if (categories.length === 0) {
+    return ctx.reply("Категорий пока нет. Обратитесь к администратору.");
+  }
+
+  await ctx.reply(
+    `Ваши интересы: \n${user.interests?.length ? user.interests.join(", ") : "пусто"}`,
+    Markup.inlineKeyboard(buildInterestKeyboard(user, categories))
+  );
+});
+
+
+
+
 
   // Edit contacts ========
   bot.hears("📞 Изменить контакты", async (ctx) => {
@@ -207,38 +225,56 @@ const profileHandler = (bot) => {
   });
 
   // ============ NETWORKING ============
+  // bot.hears("🔍 Найти людей", async (ctx) => {
+  //   const userProfile = await UserProfile.findOne({ telegramId: ctx.from.id });
+
+  //   if (!userProfile) {
+  //     await ctx.reply("Сначала настройте свой профиль с помощью /start");
+  //     return;
+  //   }
+
+  //   const matches = await findMatches(ctx.from.id, userProfile.conference);
+
+  //   if (matches.length === 0) {
+  //     await ctx.reply(
+  //       "Подходящих пользователей пока не найдено. Зайдите позже!"
+  //     );
+  //     return;
+  //   }
+
+  //   // Sort by match score
+  //   matches.sort((a, b) => {
+  //     const scoreA = calculateMatchScore(userProfile, a);
+  //     const scoreB = calculateMatchScore(userProfile, b);
+  //     return scoreB - scoreA;
+  //   });
+
+  //   await ctx.reply(`Найдено ${matches.length} потенциальных совпадений:`);
+
+  //   for (const match of matches.slice(0, 10)) {
+  //     // Show top 5 matches
+  //     const matchScore = calculateMatchScore(userProfile, match);
+  //     await showUserProfile(ctx, match, matchScore);
+  //   }
+  // });
+
   bot.hears("🔍 Найти людей", async (ctx) => {
-    const userProfile = await UserProfile.findOne({ telegramId: ctx.from.id });
+  const userProfile = await UserProfile.findOne({ telegramId: ctx.from.id });
 
-    if (!userProfile) {
-      await ctx.reply("Сначала настройте свой профиль с помощью /start");
-      return;
-    }
+  if (!userProfile) {
+    await ctx.reply("Сначала настройте свой профиль с помощью /start");
+    return;
+  }
 
-    const matches = await findMatches(ctx.from.id, userProfile.conference);
+  const categories = await Category.find();
+  const keyboard = [
+    [Markup.button.callback("🌍 Показать всех", "cat_all")],
+    ...categories.map((c) => [Markup.button.callback(c.name, `cat_${c.name}`)])
+  ];
 
-    if (matches.length === 0) {
-      await ctx.reply(
-        "Подходящих пользователей пока не найдено. Зайдите позже!"
-      );
-      return;
-    }
+  await ctx.reply("Выберите категорию:", Markup.inlineKeyboard(keyboard));
+});
 
-    // Sort by match score
-    matches.sort((a, b) => {
-      const scoreA = calculateMatchScore(userProfile, a);
-      const scoreB = calculateMatchScore(userProfile, b);
-      return scoreB - scoreA;
-    });
-
-    await ctx.reply(`Найдено ${matches.length} потенциальных совпадений:`);
-
-    for (const match of matches.slice(0, 10)) {
-      // Show top 5 matches
-      const matchScore = calculateMatchScore(userProfile, match);
-      await showUserProfile(ctx, match, matchScore);
-    }
-  });
 
   bot.hears("🤝 Мои связи", async (ctx) => {
     const connections = await Connection.find({
@@ -272,7 +308,7 @@ const profileHandler = (bot) => {
       telegramId: { $ne: ctx.from.id },
       conference: userProfile?.conference,
       isActive: true,
-    }).limit(10);
+    });
 
     if (featuredUsers.length === 0) {
       await ctx.reply("Пока нет избранных профилей.");
@@ -348,7 +384,7 @@ const profileHandler = (bot) => {
 
       let message = `💬 Чат с ${otherUser.firstName}\n`;
       if (connection.lastMessage) {
-        message += `Последний: ${connection.lastMessage.text.substring(
+        message += `Последний: ${connection.lastMessage.text?.substring(
           0,
           30
         )}...\n`;
@@ -393,6 +429,53 @@ const profileHandler = (bot) => {
     ctx.session.waitingFor = "admin_conference_name";
     await ctx.reply("Введите название конференции:");
   });
+
+  bot.command("addcategory", async (ctx) => {
+    const user = await UserProfile.findOne({ telegramId: ctx.from.id });
+    if (!user || !user.isAdmin) return;
+
+
+
+  const categoryName = ctx.message.text.split(" ").slice(1).join(" ");
+  if (!categoryName) {
+    return ctx.reply("Используйте: /addcategory НазваниеКатегории");
+  }
+
+  // Store in DB (example: categories collection)
+  const exists = await Category.findOne({ name: categoryName });
+  if (exists) {
+    return ctx.reply("⚠️ Такая категория уже существует.");
+  }
+
+  await Category.create({ name: categoryName, createdBy: ctx.from.id });
+  ctx.reply(`✅ Категория "${categoryName}" добавлена.`);
+});
+
+bot.command('categorylist', async (ctx)  => {
+    const user = await UserProfile.findOne({ telegramId: ctx.from.id });
+    if (!user || !user.isAdmin) return;
+
+      const categories = await Category.find();
+
+      if (categories.length === 0) {
+    return ctx.reply("📂 Категории пока не созданы.");
+  }
+
+
+  const keyboard = categories.map((c) => [
+    Markup.button.callback(`✏️ ${c.name}`, `editcategory_${c._id}`),
+    Markup.button.callback(`🗑 Удалить`, `delcategory_${c._id}`)
+  ]);
+  await ctx.reply("📂 Список категорий:", Markup.inlineKeyboard(keyboard));
+
+
+      // await ctx.reply('Активные категории');
+      // for(const category of categories){
+      //   await ctx.reply('
+      //     ')
+      // }
+})
+
 
   // bot.hears("🔑 Generate QR Code", async (ctx) => {
   //   const user = await UserProfile.findOne({ telegramId: ctx.from.id });
@@ -613,7 +696,7 @@ const profileHandler = (bot) => {
     }
 
     // Profile editing
-    else if (["interests", "offerings", "lookingFor","phone", "email", "telegram", "vkontakte"].includes(waitingFor)) {
+    else if (["offerings", "lookingFor","phone", "email", "telegram", "vkontakte"].includes(waitingFor)) {
       await handleProfileInput(ctx, waitingFor, text);
     }
     // Questions
@@ -786,6 +869,17 @@ const profileHandler = (bot) => {
 
       ctx.session.waitingFor = null;
     }
+
+    // category edit 
+    else if (waitingFor === "edit_category_name") {
+    const newName = ctx.message.text;
+    const editCategoryID = ctx.session.editCategoryId
+    await Category.findByIdAndUpdate(editCategoryID, { name: newName });
+
+    await ctx.reply(`✅ Категория переименована в "${newName}"`);
+    ctx.session.editCategoryId = null;
+  }
+
   });
 
   // ============ ACTION HANDLERS ============
@@ -1006,6 +1100,111 @@ bot.action(/rejectU_(.+)/, async (ctx) => {
   await ctx.telegram.sendMessage(requesterId, `😢 Ваш запрос отклонён пользователем ${ctx.from.first_name}.`);
 });
 
+
+bot.action(/cat_(.+)/, async (ctx) => {
+  const chosenCategory = ctx.match[1];
+  const userProfile = await UserProfile.findOne({ telegramId: ctx.from.id });
+
+  if (!userProfile) {
+    await ctx.reply("Сначала настройте свой профиль с помощью /start");
+    return;
+  }
+
+  let matches;
+  if (chosenCategory === "all") {
+    matches = await UserProfile.find({ telegramId: { $ne: ctx.from.id }, conference:  userProfile.conference});
+  } else {
+    matches = await UserProfile.find({
+      telegramId: { $ne: ctx.from.id },
+      interests: chosenCategory
+    });
+  }
+
+  if (matches.length === 0) {
+    await ctx.reply("Пользователи не найдены. Попробуйте позже!");
+    return ctx.answerCbQuery();
+  }
+
+  // Сортировка по алгоритму совпадений
+  matches.sort((a, b) => {
+    const scoreA = calculateMatchScore(userProfile, a);
+    const scoreB = calculateMatchScore(userProfile, b);
+    return scoreB - scoreA;
+  });
+
+  await ctx.reply(`👥 Найдено ${matches.length} пользователей:`);
+
+  for (const match of matches.slice(0, 10)) {
+    const matchScore = calculateMatchScore(userProfile, match);
+    await showUserProfile(ctx, match, matchScore);
+  }
+
+  ctx.answerCbQuery();
+});
+
+bot.action(/editcategory_(.+)/, async (ctx) => {
+  const catId = ctx.match[1];
+  const category = await Category.findById(catId);
+
+  if (!category) {
+    return ctx.reply("❌ Категория не найдена.");
+  }
+
+  ctx.session.waitingFor = "edit_category_name"
+  ctx.session.editCategoryId = catId;
+
+  await ctx.reply(
+    `Введите новое название для категории "${category.name}":`
+  );  
+
+  ctx.answerCbQuery();
+});
+
+
+bot.action(/delcategory_(.+)/, async (ctx) => {
+  const catId = ctx.match[1];
+  const category = await Category.findById(catId);
+
+  if (!category) {
+    return ctx.reply("❌ Категория не найдена.");
+  }
+
+  await Category.findByIdAndDelete(catId);
+  await ctx.reply(`🗑 Категория "${category.name}" удалена.`);
+
+  ctx.answerCbQuery();
+});
+
+// === Обработка клика по категории ===
+bot.action(/interest_(.+)/, async (ctx) => {
+  const categoryName = ctx.match[1];
+  const user = await UserProfile.findOne({ telegramId: ctx.from.id });
+
+  if (!user) {
+    return ctx.reply("Сначала настройте свой профиль через /start");
+  }
+
+  // toggle: добавить/удалить
+  if (user.interests?.includes(categoryName)) {
+    user.interests = user.interests.filter((c) => c !== categoryName);
+  } else {
+    user.interests = [...(user.interests || []), categoryName];
+  }
+
+  await user.save();
+
+  const categories = await Category.find().sort({ name: 1 });
+  await ctx.editMessageText(
+    `Ваши интересы: ${user.interests.length ? user.interests.join(", ") : "пусто"}`,
+    Markup.inlineKeyboard(buildInterestKeyboard(user, categories))
+  );
+
+  await ctx.answerCbQuery();
+});
+
+
+
+
   // ============ PHOTO HANDLER ============
   bot.on("photo", async (ctx) => {
     if (!ctx.session || ctx.session.waitingFor !== "photo") return;
@@ -1096,6 +1295,7 @@ async function handleProfileInput(ctx, waitingFor, text) {
     await ctx.reply("❌ Ошибка обновления профиля");
   }
 }
+
 
 async function handleQuestionInput(ctx, text) {
   try {
@@ -1476,5 +1676,18 @@ function generateAccessCode() {
 function escapeMarkdown(text) {
   return text?.toString().replace(/[_*[\]()~`]/g, "\\$&") || "";
 }
+
+function buildInterestKeyboard(user, categories) {
+  return categories.map((c) => {
+    const isActive = user.interests?.includes(c.name);
+    return [
+      Markup.button.callback(
+        isActive ? `❌ ${c.name}` : `➕ ${c.name}`,
+        `interest_${c.name}`
+      ),
+    ];
+  });
+}
+
 
 module.exports = profileHandler;

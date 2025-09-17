@@ -101,6 +101,22 @@ const accessCodeSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
+const categorySchema = new mongoose.Schema({
+ name: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+    },
+    createdBy: {
+      type: Number, // Telegram ID админа
+      required: true,
+    },
+},   { timestamps: true });
+
+
+
+
 // Models
 const UserProfile = mongoose.model("UserProfile", userProfileSchema);
 const Conference = mongoose.model("Conference", conferenceSchema);
@@ -109,6 +125,8 @@ const Question = mongoose.model("Question", questionSchema);
 const Connection = mongoose.model("Connection", connectionSchema);
 const Message = mongoose.model("Message", messageSchema);
 const AccessCode = mongoose.model("AccessCode", accessCodeSchema);
+const Category = mongoose.model("Category", categorySchema);
+
 
 // Connect to MongoDB
 const connectDB = async () => {
@@ -130,4 +148,5 @@ module.exports = {
   Connection,
   Message,
   AccessCode,
+  Category
 };
